@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/sessione.dart';
+import '../anagrafiche/ingrediente_sheet.dart';
 import '../../data/magazzino_repository.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/contenuto_centrato.dart';
@@ -70,7 +73,17 @@ class DistintaScreen extends ConsumerWidget {
             (!perProdotto && resa != null && resa > 0) ? costo / resa : null;
 
         return Scaffold(
-          appBar: AppBar(title: Text(nome)),
+          appBar: AppBar(
+            title: Text(nome),
+            actions: [
+              IconButton(
+                tooltip: 'Modifica',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () =>
+                    _modificaTestata(context, ref, dist, perProdotto),
+              ),
+            ],
+          ),
           body: ContenutoCentrato(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
@@ -183,6 +196,39 @@ class DistintaScreen extends ConsumerWidget {
     }
   }
 
+  /// Modifica il piatto o il semilavorato a cui la ricetta appartiene.
+  ///
+  /// Per i semilavorati riusa la scheda dell'ingrediente: sono la stessa cosa,
+  /// e due schermate diverse per la stessa entità finirebbero per divergere.
+  Future<void> _modificaTestata(BuildContext context, WidgetRef ref,
+      Map<String, dynamic> dist, bool perProdotto) async {
+    if (!perProdotto) {
+      final sessione = ref.read(sessioneProvider).valueOrNull;
+      if (sessione == null) return;
+      final cambiato = await apriIngrediente(
+        context,
+        ingrediente: Map<String, dynamic>.from(dist['ingrediente'] as Map),
+        organizzazioneId: sessione.organizzazioneId,
+      );
+      if (cambiato) _ricarica(ref);
+      return;
+    }
+
+    final p = Map<String, dynamic>.from(dist['prodotto_venduto'] as Map);
+    final esito = await showDialog<String>(
+      context: context,
+      builder: (_) => _ModificaPiatto(prodotto: p),
+    );
+    if (esito == null) return;
+
+    if (esito == 'eliminato' && context.mounted) {
+      ref.invalidate(prodottiProvider);
+      context.go('/ricette');
+      return;
+    }
+    _ricarica(ref);
+  }
+
   Future<void> _modifica(
       BuildContext context, WidgetRef ref, Map<String, dynamic> c) async {
     final ing = c['ingrediente'] as Map?;
@@ -196,6 +242,209 @@ class DistintaScreen extends ConsumerWidget {
     await repo.aggiornaComponente(c['id'] as String, quantita: q);
     _ricarica(ref);
   }
+}
+
+/// Modifica di un piatto a menù.
+///
+/// Restituisce 'salvato' o 'eliminato'. Un piatto già venduto si può
+/// eliminare: le righe di vendita restano e perdono solo il collegamento,
+/// perché quello che è successo in cassa è successo comunque.
+class _ModificaPiatto extends StatefulWidget {
+  final Map<String, dynamic> prodotto;
+  const _ModificaPiatto({required this.prodotto});
+
+  @override
+  State<_ModificaPiatto> createState() => _ModificaPiattoState();
+}
+
+class _ModificaPiattoState extends State<_ModificaPiatto> {
+  late final _nome =
+      TextEditingController(text: widget.prodotto['nome'] as String? ?? '');
+  late final _categoria = TextEditingController(
+      text: widget.prodotto['categoria_menu'] as String? ?? '');
+  late final _codice = TextEditingController(
+      text: widget.prodotto['codice_esterno'] as String? ?? '');
+  late final _prezzo = TextEditingController(
+      text: (widget.prodotto['prezzo_vendita'] as num?)
+              ?.toString()
+              .replaceAll('.', ',') ??
+          '');
+
+  late bool _senzaDistinta = widget.prodotto['senza_distinta'] == true;
+  late bool _attivo = widget.prodotto['attivo'] != false;
+  bool _lavorando = false;
+  String? _errore;
+
+  @override
+  void dispose() {
+    for (final c in [_nome, _categoria, _codice, _prezzo]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _salva() async {
+    setState(() {
+      _lavorando = true;
+      _errore = null;
+    });
+    try {
+      await repo.aggiornaProdottoVenduto(widget.prodotto['id'] as String, {
+        'nome': _nome.text.trim(),
+        'categoria_menu':
+            _categoria.text.trim().isEmpty ? null : _categoria.text.trim(),
+        'codice_esterno':
+            _codice.text.trim().isEmpty ? null : _codice.text.trim(),
+        'prezzo_vendita': num.tryParse(_prezzo.text.replaceAll(',', '.')),
+        'senza_distinta': _senzaDistinta,
+        'attivo': _attivo,
+      });
+      if (mounted) Navigator.pop(context, 'salvato');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errore = '$e'.contains('unique') || '$e'.contains('duplicate')
+              ? 'Esiste già un piatto con questo nome.'
+              : '$e';
+          _lavorando = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _elimina() async {
+    final ok = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: Text('Eliminare ${_nome.text.trim()}?'),
+            content: const Text(
+              'Sparisce il piatto e la sua ricetta. Le vendite già registrate '
+              'restano: quello che è passato in cassa è passato, perde solo il '
+              'collegamento al piatto.',
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('Annulla')),
+              TextButton(
+                onPressed: () => Navigator.pop(c, true),
+                style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+                child: const Text('Elimina'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok) return;
+
+    setState(() => _lavorando = true);
+    try {
+      await repo.eliminaProdottoVenduto(widget.prodotto['id'] as String);
+      if (mounted) Navigator.pop(context, 'eliminato');
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errore = '$e';
+          _lavorando = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Modifica piatto'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _nome,
+                  decoration: const InputDecoration(labelText: 'Nome'),
+                  onChanged: (_) => setState(() {}),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _prezzo,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: 'Prezzo di vendita', suffixText: '€'),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _categoria,
+                  decoration:
+                      const InputDecoration(labelText: 'Categoria a menù'),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _codice,
+                  decoration: const InputDecoration(
+                    labelText: 'Codice di cassa',
+                    helperText: 'Come identifica il piatto iPratico. Senza, le '
+                        'vendite non si agganciano da sole.',
+                    helperMaxLines: 3,
+                  ),
+                ),
+                SwitchListTile(
+                  value: _senzaDistinta,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Non consuma magazzino'),
+                  subtitle: const Text(
+                    'Coperto, servizio, buoni. Venderlo non scarica niente e '
+                    'non compare fra quelli senza ricetta.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onChanged: (v) => setState(() => _senzaDistinta = v),
+                ),
+                SwitchListTile(
+                  value: _attivo,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('A menù'),
+                  subtitle: const Text(
+                    'Spegnerlo lo toglie dagli elenchi senza cancellare le '
+                    'vendite passate.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  onChanged: (v) => setState(() => _attivo = v),
+                ),
+                if (_errore != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentLight,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(_errore!,
+                        style: const TextStyle(
+                            color: AppColors.accentDark, fontSize: 13)),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _lavorando ? null : _elimina,
+            style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+            child: const Text('Elimina'),
+          ),
+          const Spacer(),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annulla')),
+          TextButton(
+            onPressed:
+                (_lavorando || _nome.text.trim().isEmpty) ? null : _salva,
+            child: const Text('Salva'),
+          ),
+        ],
+      );
 }
 
 class _Testata extends StatelessWidget {

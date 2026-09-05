@@ -138,6 +138,66 @@ class MagazzinoRepository {
             .order('incidenza_percentuale', ascending: false),
       );
 
+  // ── Anagrafica ingredienti ──────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> ingredienti(
+      {bool soloAttivi = true}) async {
+    final q = Db.mag.from('ingrediente').select('''
+          id, nome, um_base, conservazione, categoria_id, attivo,
+          prodotto_internamente, vendibile_diretto, dose_standard,
+          gestisci_lotti, richiede_abbattimento, giorni_scadenza_default,
+          scorta_minima, scorta_ideale, costo_medio, note,
+          categoria_ingrediente(nome)
+        ''');
+    final r = soloAttivi
+        ? await q.eq('attivo', true).order('nome')
+        : await q.order('nome');
+    return List<Map<String, dynamic>>.from(r);
+  }
+
+  Future<Map<String, dynamic>> ingrediente(String id) async =>
+      await Db.mag.from('ingrediente').select().eq('id', id).single();
+
+  /// Cambiare l'unità base a magazzino pieno falserebbe ogni quantità già
+  /// registrata: 500 g diventerebbero 500 ml senza che nessuno se ne accorga.
+  /// Perciò il campo si blocca appena c'è un movimento.
+  Future<bool> haMovimenti(String ingredienteId) async {
+    final r = await Db.mag
+        .from('movimento')
+        .select('id')
+        .eq('ingrediente_id', ingredienteId)
+        .limit(1);
+    return (r as List).isNotEmpty;
+  }
+
+  Future<String> creaIngrediente(Map<String, dynamic> dati) async {
+    final r =
+        await Db.mag.from('ingrediente').insert(dati).select('id').single();
+    return r['id'] as String;
+  }
+
+  Future<void> aggiornaIngrediente(String id, Map<String, dynamic> dati) async {
+    await Db.mag.from('ingrediente').update(dati).eq('id', id);
+  }
+
+  Future<void> aggiornaProdottoVenduto(
+          String id, Map<String, dynamic> dati) async =>
+      await Db.mag.from('prodotto_venduto').update(dati).eq('id', id);
+
+  /// Si elimina solo cio' che non ha lasciato tracce.
+  ///
+  /// Il database rifiuta di cancellare un ingrediente che ha movimenti o che
+  /// compare in una ricetta, e fa bene: cancellarlo vorrebbe dire buttare via
+  /// la storia di quei movimenti. In quel caso si spegne, e sparisce dagli
+  /// elenchi senza portarsi dietro niente.
+  Future<void> eliminaIngrediente(String id) async {
+    await Db.mag.from('ingrediente').delete().eq('id', id);
+  }
+
+  Future<void> eliminaProdottoVenduto(String id) async {
+    await Db.mag.from('prodotto_venduto').delete().eq('id', id);
+  }
+
   // ── Ricette ─────────────────────────────────────────────────────────────
 
   /// I prodotti a menù, con l'indicazione se hanno già una ricetta attiva.
@@ -222,8 +282,13 @@ class MagazzinoRepository {
       await Db.mag.from('distinta').select('''
             id, stato, versione, valida_da, quantita_prodotta, variabile, note,
             prodotto_venduto_id, ingrediente_id,
-            prodotto_venduto(nome, prezzo_vendita),
-            ingrediente(nome, um_base)
+            prodotto_venduto(id, nome, prezzo_vendita, categoria_menu,
+                             codice_esterno, senza_distinta, attivo),
+            ingrediente(id, nome, um_base, conservazione, categoria_id, attivo,
+                        prodotto_internamente, vendibile_diretto, dose_standard,
+                        gestisci_lotti, richiede_abbattimento,
+                        giorni_scadenza_default, scorta_minima, scorta_ideale,
+                        note)
           ''').eq('id', id).single();
 
   Future<List<Map<String, dynamic>>> componenti(String distintaId) async =>
