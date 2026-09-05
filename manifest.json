@@ -1,0 +1,35 @@
+{
+    "name": "Magazzino HIO",
+    "short_name": "Magazzino",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#F5F0E7",
+    "theme_color": "#B9172A",
+    "description": "Magazzino, acquisti e food cost di HIO Oriental",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
