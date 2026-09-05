@@ -172,7 +172,17 @@ class LavorazioneScreen extends ConsumerWidget {
       aiuto: 'Il peso vero sulla bilancia',
     );
     if (q == null || q <= 0) return;
-    await repo.aggiungiInput(id, ing['id'] as String, q);
+
+    // Da quale pezzo si sta tagliando. Senza questa domanda i tranci non
+    // ricordano da quale tonno vengono, e la catena si spezza proprio dove
+    // serve di più.
+    String? lotto;
+    if (context.mounted) {
+      lotto = await scegliLotto(
+          context, ing['id'] as String, ing['nome'] as String);
+    }
+
+    await repo.aggiungiInput(id, ing['id'] as String, q, lottoId: lotto);
     _ricarica(ref);
   }
 

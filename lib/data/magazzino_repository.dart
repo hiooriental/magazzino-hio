@@ -187,12 +187,33 @@ class MagazzinoRepository {
     return r['id'] as String;
   }
 
+  /// I lotti di questo ingrediente che hanno ancora merce dentro.
+  ///
+  /// Servono a sapere DA QUALE pezzo si sta tagliando: è l'unico modo perché
+  /// i tranci ricordino da quale tonno vengono, e la tracciabilità non si
+  /// spezzi proprio nel punto in cui il pesce viene trasformato.
+  Future<List<Map<String, dynamic>>> lottiDisponibili(
+          String ingredienteId) async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('giacenza_lotto')
+            .select('lotto_id, lotto, data_scadenza, quantita, abbattuto')
+            .eq('ingrediente_id', ingredienteId)
+            .gt('quantita', 0)
+            .order('data_scadenza', nullsFirst: false),
+      );
+
   Future<void> aggiungiInput(
-      String lavorazioneId, String ingredienteId, num quantita) async {
+    String lavorazioneId,
+    String ingredienteId,
+    num quantita, {
+    String? lottoId,
+  }) async {
     await Db.mag.from('lavorazione_input').insert({
       'lavorazione_id': lavorazioneId,
       'ingrediente_id': ingredienteId,
       'quantita': quantita,
+      if (lottoId != null) 'lotto_id': lottoId,
     });
   }
 

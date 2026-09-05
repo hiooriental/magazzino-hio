@@ -16,14 +16,14 @@
 --  sui tagli deve fare ESATTAMENTE il costo del pezzo intero. Se ne perde
 --  per strada, ogni piatto di pesce costa meno di quanto costa davvero.
 --
---  Prima di eseguire, sostituire ID-UTENTE-QUI (select id, email from auth.users).
+--  Prima di eseguire, sostituire d3cf992a-2820-4651-b82e-c03ce6959ba6 (select id, email from auth.users).
 --  Tutto dentro BEGIN ... ROLLBACK.
 -- ============================================================================
 
 begin;
 
 set local role authenticated;
-set local request.jwt.claims = '{"sub":"ID-UTENTE-QUI","role":"authenticated"}';
+set local request.jwt.claims = '{"sub":"d3cf992a-2820-4651-b82e-c03ce6959ba6","role":"authenticated"}';
 
 
 -- ════════════════════════════════════════════════════════════════════════════
@@ -47,19 +47,32 @@ values
   ('a0000000-0000-4000-8000-000000000012','7f3a1c2e-9b4d-4e5a-8c6f-1d2e3a4b5c6d','PROVA — Tonno per tartare','g','frigo',true,true),
   ('a0000000-0000-4000-8000-000000000013','7f3a1c2e-9b4d-4e5a-8c6f-1d2e3a4b5c6d','PROVA — Tonno per sashimi','g','frigo',true,true);
 
+-- Il tonno arriva con il suo lotto, come farebbe da un DDT vero: senza,
+-- la tracciabilità non avrebbe da dove partire.
+insert into magazzino.lotto
+  (id, organizzazione_id, ingrediente_id, codice, data_carico,
+   quantita_iniziale, costo_unitario)
+values ('f0000000-0000-4000-8000-000000000001',
+        '7f3a1c2e-9b4d-4e5a-8c6f-1d2e3a4b5c6d',
+        'a0000000-0000-4000-8000-000000000003',
+        '2026-PROVA1', current_date, 8400, 0.058);
+
 -- Rimanenze iniziali, con i loro costi.
 insert into magazzino.movimento
-  (organizzazione_id, ingrediente_id, deposito_id, causale_codice, quantita, costo_unitario, data_competenza)
+  (organizzazione_id, ingrediente_id, deposito_id, lotto_id,
+   causale_codice, quantita, costo_unitario, data_competenza)
 select '7f3a1c2e-9b4d-4e5a-8c6f-1d2e3a4b5c6d', x.ing,
        (select id from magazzino.deposito
          where organizzazione_id = '7f3a1c2e-9b4d-4e5a-8c6f-1d2e3a4b5c6d' and attivo
          order by ordinamento limit 1),
+       x.lotto,
        'rimanenza_iniziale', x.qta, x.costo, current_date
 from (values
-  ('a0000000-0000-4000-8000-000000000001'::uuid, 20000::numeric, 0.002::numeric),
-  ('a0000000-0000-4000-8000-000000000002'::uuid,  5000::numeric, 0.004::numeric),
-  ('a0000000-0000-4000-8000-000000000003'::uuid,  8400::numeric, 0.058::numeric)
-) as x(ing, qta, costo);
+  ('a0000000-0000-4000-8000-000000000001'::uuid, 20000::numeric, 0.002::numeric, null::uuid),
+  ('a0000000-0000-4000-8000-000000000002'::uuid,  5000::numeric, 0.004::numeric, null::uuid),
+  ('a0000000-0000-4000-8000-000000000003'::uuid,  8400::numeric, 0.058::numeric,
+   'f0000000-0000-4000-8000-000000000001'::uuid)
+) as x(ing, qta, costo, lotto);
 
 select magazzino.aggiorna_costo_medio('a0000000-0000-4000-8000-000000000001', 20000, 0.002);
 select magazzino.aggiorna_costo_medio('a0000000-0000-4000-8000-000000000002',  5000, 0.004);
@@ -113,8 +126,10 @@ insert into magazzino.lavorazione (id, organizzazione_id, tipo, ripartizione)
 values ('c0000000-0000-4000-8000-000000000002',
         '7f3a1c2e-9b4d-4e5a-8c6f-1d2e3a4b5c6d', 'disassemblaggio', 'valore');
 
-insert into magazzino.lavorazione_input (lavorazione_id, ingrediente_id, quantita)
-values ('c0000000-0000-4000-8000-000000000002','a0000000-0000-4000-8000-000000000003',8400);
+-- Il lotto va indicato: è da lì che i tranci ereditano l'origine.
+insert into magazzino.lavorazione_input (lavorazione_id, ingrediente_id, quantita, lotto_id)
+values ('c0000000-0000-4000-8000-000000000002','a0000000-0000-4000-8000-000000000003',8400,
+        'f0000000-0000-4000-8000-000000000001');
 
 insert into magazzino.lavorazione_output (lavorazione_id, ingrediente_id, quantita, valore_relativo)
 values
@@ -227,19 +242,23 @@ esiti as (
   where id = 'c0000000-0000-4000-8000-000000000002'
 
   union all
+  -- Nessuna riga in `giacenza` significa zero: la vista scarta i saldi nulli.
+  -- Con un aggregato la riga di risultato esce comunque, anche senza dati.
   select 8, 'disassemblaggio — il pezzo intero è uscito',
-    coalesce(round(coalesce(q,0),0)::text,'0') || ' g',
-    case when coalesce(q,0) = 0 then 'OK' else 'ERRORE: doveva azzerarsi' end
-  from (select 1) z
-  left join g on g.ingrediente_id = 'a0000000-0000-4000-8000-000000000003'
+    coalesce(round(sum(q), 0), 0)::text || ' g',
+    case when coalesce(sum(q), 0) = 0 then 'OK' else 'ERRORE: doveva azzerarsi' end
+  from g where ingrediente_id = 'a0000000-0000-4000-8000-000000000003'
 
   union all
+  -- Niente `limit` dentro un ramo di union: si conta invece di prendere
+  -- la prima riga.
   select 9, 'tracciabilità — il trancio ricorda il tonno',
-    case when l.lotto_origine_id is not null then 'lotto di origine collegato' else 'nessun collegamento' end,
-    case when l.lotto_origine_id is not null then 'OK' else 'ERRORE: catena interrotta' end
-  from magazzino.lotto l
-  where l.ingrediente_id = 'a0000000-0000-4000-8000-000000000011'
-  limit 1
+    count(*) filter (where lotto_origine_id is not null)::text
+      || ' lotti collegati al pezzo di origine',
+    case when count(*) filter (where lotto_origine_id is not null) > 0
+         then 'OK' else 'ERRORE: catena interrotta' end
+  from magazzino.lotto
+  where ingrediente_id = 'a0000000-0000-4000-8000-000000000011'
 
   union all
   select 10, 'food cost — costo della tagliata',

@@ -105,6 +105,52 @@ class _DialogoState extends State<_Dialogo> {
       );
 }
 
+/// Chiede da quale lotto si sta prelevando.
+///
+/// Restituisce l'id del lotto, oppure `null` se non ce ne sono o se
+/// l'operatore sceglie di non indicarlo. Con un lotto solo non chiede niente:
+/// non ha senso far scegliere fra una cosa sola.
+///
+/// I lotti sono ordinati per scadenza: il primo della lista è quello che
+/// andrebbe consumato per primo.
+Future<String?> scegliLotto(
+  BuildContext context,
+  String ingredienteId,
+  String nomeIngrediente,
+) async {
+  final lotti = await repo.lottiDisponibili(ingredienteId);
+  if (lotti.isEmpty) return null;
+  if (lotti.length == 1) return lotti.first['lotto_id'] as String?;
+  if (!context.mounted) return null;
+
+  return showDialog<String>(
+    context: context,
+    builder: (c) => SimpleDialog(
+      title: Text('Da quale lotto di $nomeIngrediente?'),
+      children: [
+        ...lotti.map((l) => SimpleDialogOption(
+              onPressed: () => Navigator.pop(c, l['lotto_id'] as String),
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l['lotto'] as String? ?? ''),
+                subtitle: Text([
+                  '${l['quantita']} disponibili',
+                  if (l['data_scadenza'] != null)
+                    'scade il ${l['data_scadenza']}',
+                  if (l['abbattuto'] == false) 'non abbattuto',
+                ].join(' · ')),
+              ),
+            )),
+        SimpleDialogOption(
+          onPressed: () => Navigator.pop(c),
+          child: const Text('Non lo so',
+              style: TextStyle(color: AppColors.textSecondary)),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Chiede un numero: un peso, una quantità.
 Future<num?> chiediNumero(
   BuildContext context, {
