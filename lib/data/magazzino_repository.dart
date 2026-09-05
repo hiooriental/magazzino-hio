@@ -138,6 +138,46 @@ class MagazzinoRepository {
             .order('incidenza_percentuale', ascending: false),
       );
 
+  // ── Anagrafica fornitori ────────────────────────────────────────────────
+
+  /// I fornitori con quanti documenti e quanti articoli hanno: sono i numeri
+  /// che dicono chi è un fornitore vero e chi è entrato per sbaglio.
+  Future<List<Map<String, dynamic>>> fornitori({bool soloAttivi = true}) async {
+    final q = Db.mag.from('fornitore').select('''
+          id, denominazione, partita_iva, codice_fiscale, email, telefono,
+          referente, giorni_consegna, note, attivo,
+          documento_carico(count), articolo_fornitore(count)
+        ''');
+    final r = soloAttivi
+        ? await q.eq('attivo', true).order('denominazione')
+        : await q.order('denominazione');
+    return List<Map<String, dynamic>>.from(r);
+  }
+
+  /// Un fornitore che ha già consegnato non si cancella: cancellarlo
+  /// vorrebbe dire buttare via i documenti che ha portato.
+  Future<bool> haDocumenti(String fornitoreId) async {
+    final r = await Db.mag
+        .from('documento_carico')
+        .select('id')
+        .eq('fornitore_id', fornitoreId)
+        .limit(1);
+    return (r as List).isNotEmpty;
+  }
+
+  Future<String> creaFornitore(Map<String, dynamic> dati) async {
+    final r = await Db.mag.from('fornitore').insert(dati).select('id').single();
+    return r['id'] as String;
+  }
+
+  Future<void> aggiornaFornitore(String id, Map<String, dynamic> dati) async {
+    await Db.mag.from('fornitore').update(dati).eq('id', id);
+  }
+
+  Future<void> eliminaFornitore(String id) async {
+    await Db.mag.from('fornitore').delete().eq('id', id);
+  }
+
   // ── Anagrafica ingredienti ──────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> ingredienti(
@@ -283,7 +323,8 @@ class MagazzinoRepository {
             id, stato, versione, valida_da, quantita_prodotta, variabile, note,
             prodotto_venduto_id, ingrediente_id,
             prodotto_venduto(id, nome, prezzo_vendita, categoria_menu,
-                             codice_esterno, senza_distinta, attivo),
+                             codice_esterno, senza_distinta, attivo,
+                             descrizione),
             ingrediente(id, nome, um_base, conservazione, categoria_id, attivo,
                         prodotto_internamente, vendibile_diretto, dose_standard,
                         gestisci_lotti, richiede_abbattimento,
@@ -458,7 +499,7 @@ class MagazzinoRepository {
   // deve non essere successo niente — e questo lo garantisce solo una
   // transazione lato server.
 
-  Future<Map<String, dynamic>> creaFornitore(
+  Future<Map<String, dynamic>> creaFornitoreDaDocumento(
     String documentoId, {
     String? denominazione,
     String? partitaIva,

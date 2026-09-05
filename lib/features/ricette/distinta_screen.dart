@@ -112,6 +112,32 @@ class DistintaScreen extends ConsumerWidget {
                       children: [
                         Text('Ingredienti',
                             style: Theme.of(context).textTheme.titleMedium),
+
+                        // Cosa dice il menù. Serve mentre si compone la
+                        // ricetta: evita di andarsela a cercare sul sito e di
+                        // dimenticarne metà.
+                        if ((dist['prodotto_venduto']
+                                as Map?)?['descrizione'] !=
+                            null) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.goldLight,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              (dist['prodotto_venduto'] as Map)['descrizione']
+                                  as String,
+                              style: const TextStyle(
+                                  fontSize: 12.5,
+                                  color: AppColors.textSecondary,
+                                  height: 1.35),
+                            ),
+                          ),
+                        ],
+
                         const SizedBox(height: 10),
                         if (componenti.isEmpty)
                           const Padding(

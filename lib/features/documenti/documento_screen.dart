@@ -362,7 +362,7 @@ class _AvvisoFornitoreState extends State<_AvvisoFornitore> {
   Future<void> _crea() async {
     setState(() => _inCorso = true);
     try {
-      final esito = await repo.creaFornitore(widget.documentoId);
+      final esito = await repo.creaFornitoreDaDocumento(widget.documentoId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(esito['creato'] == true

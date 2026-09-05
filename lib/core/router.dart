@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'db.dart';
+import '../features/anagrafiche/fornitori_screen.dart';
 import '../features/anagrafiche/ingredienti_screen.dart';
 import '../features/auth/accesso_screen.dart';
 import '../features/cruscotto/cruscotto_screen.dart';
@@ -74,6 +75,8 @@ final router = GoRouter(
 
     GoRoute(
         path: '/ingredienti', builder: (_, __) => const IngredientiScreen()),
+
+    GoRoute(path: '/fornitori', builder: (_, __) => const FornitoriScreen()),
 
     GoRoute(
       path: '/lavorazioni',
