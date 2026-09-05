@@ -89,6 +89,133 @@ class MagazzinoRepository {
             .order('ordinamento'),
       );
 
+  // ── Cruscotto e scorte ──────────────────────────────────────────────────
+
+  /// Tutti i numeri della prima schermata in una query sola.
+  Future<Map<String, dynamic>> cruscotto(String organizzazioneId) async =>
+      Map<String, dynamic>.from(
+        await Db.mag
+            .from('cruscotto')
+            .select()
+            .eq('organizzazione_id', organizzazioneId)
+            .single(),
+      );
+
+  /// Lo stato di ogni ingrediente. `stati` filtra: ['esaurito','critico'].
+  Future<List<Map<String, dynamic>>> statoScorte({List<String>? stati}) async {
+    final q = Db.mag.from('stato_scorte').select();
+    final r = stati == null || stati.isEmpty
+        ? await q.order('ingrediente')
+        : await q
+            .inFilter('stato', stati)
+            .order('giorni_copertura', ascending: true);
+    return List<Map<String, dynamic>>.from(r);
+  }
+
+  Future<List<Map<String, dynamic>>> scadenze() async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag.from('scadenze').select().order('data_scadenza'),
+      );
+
+  Future<List<Map<String, dynamic>>> daAbbattere() async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag.from('da_abbattere').select().order('data_carico'),
+      );
+
+  Future<List<Map<String, dynamic>>> rincari() async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('rincari')
+            .select()
+            .order('variazione_percentuale', ascending: false),
+      );
+
+  Future<List<Map<String, dynamic>>> foodCost() async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('food_cost')
+            .select()
+            .order('incidenza_percentuale', ascending: false),
+      );
+
+  // ── Lavorazioni ─────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> lavorazioni({int limite = 40}) async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('resa_lavorazione')
+            .select()
+            .order('data_lavorazione', ascending: false)
+            .limit(limite),
+      );
+
+  Future<Map<String, dynamic>> lavorazione(String id) async =>
+      await Db.mag.from('lavorazione').select().eq('id', id).single();
+
+  Future<List<Map<String, dynamic>>> lavorazioneInput(String id) async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('lavorazione_input')
+            .select('id, quantita, costo_unitario, ingrediente_id, '
+                'ingrediente(nome, um_base, costo_medio)')
+            .eq('lavorazione_id', id),
+      );
+
+  Future<List<Map<String, dynamic>>> lavorazioneOutput(String id) async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('lavorazione_output')
+            .select('id, quantita, valore_relativo, costo_unitario, '
+                'ingrediente_id, ingrediente(nome, um_base)')
+            .eq('lavorazione_id', id),
+      );
+
+  Future<String> creaLavorazione({
+    required String organizzazioneId,
+    required String tipo,
+    String ripartizione = 'valore',
+  }) async {
+    final r = await Db.mag
+        .from('lavorazione')
+        .insert({
+          'organizzazione_id': organizzazioneId,
+          'tipo': tipo,
+          'ripartizione': ripartizione,
+        })
+        .select('id')
+        .single();
+    return r['id'] as String;
+  }
+
+  Future<void> aggiungiInput(
+      String lavorazioneId, String ingredienteId, num quantita) async {
+    await Db.mag.from('lavorazione_input').insert({
+      'lavorazione_id': lavorazioneId,
+      'ingrediente_id': ingredienteId,
+      'quantita': quantita,
+    });
+  }
+
+  Future<void> aggiungiOutput(String lavorazioneId, String ingredienteId,
+      num quantita, num valoreRelativo) async {
+    await Db.mag.from('lavorazione_output').insert({
+      'lavorazione_id': lavorazioneId,
+      'ingrediente_id': ingredienteId,
+      'quantita': quantita,
+      'valore_relativo': valoreRelativo,
+    });
+  }
+
+  Future<void> togliRiga(String tabella, String id) async {
+    await Db.mag.from(tabella).delete().eq('id', id);
+  }
+
+  Future<Map<String, dynamic>> chiudiLavorazione(String id) async =>
+      Map<String, dynamic>.from(
+        await Db.mag
+            .rpc('chiudi_lavorazione', params: {'p_lavorazione_id': id}),
+      );
+
   // ── Azioni ──────────────────────────────────────────────────────────────
   //
   // Sono tutte funzioni del database, non sequenze di chiamate dall'app.

@@ -17,16 +17,15 @@ with controlli as (
          then 'OK' else 'ERRORE: serve Postgres 15+' end as esito
 
   union all
-  -- 2. Tabelle create
+  -- 2. Tabelle: 20 della sezione 1, 11 della sezione 2
   select 2, 'tabelle', count(*)::text,
-    case when count(*) = 20 then 'OK' else 'ERRORE: attese 20' end
+    case when count(*) = 31 then 'OK' else 'ERRORE: attese 31' end
   from pg_tables where schemaname = 'magazzino'
 
   union all
-  -- 3. Viste create: giacenza, giacenza_valorizzata, giacenza_lotto,
-  --    documento_riepilogo
+  -- 3. Viste: 4 della sezione 1, 10 della sezione 2
   select 3, 'viste', count(*)::text,
-    case when count(*) = 4 then 'OK' else 'ERRORE: attese 4' end
+    case when count(*) = 14 then 'OK' else 'ERRORE: attese 14' end
   from pg_views where schemaname = 'magazzino'
 
   union all
@@ -114,6 +113,27 @@ with controlli as (
   from pg_policy
   where polrelid = to_regclass('storage.objects')
     and polname like 'magazzino documenti%'
+
+  union all
+  -- 14. Le funzioni della sezione 2
+  select 14, 'funzioni sezione 2',
+    coalesce(string_agg(p.proname, ', ' order by p.proname), 'nessuna'),
+    case when count(*) = 8 then 'OK'
+         else 'ERRORE: attese 8, ne risultano ' || count(*) end
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'magazzino'
+    and p.proname in ('costo_distinta','costo_ingrediente','chiudi_lavorazione',
+                      'storna_lavorazione','scarica_vendita','scarica_giornata',
+                      'apri_inventario','chiudi_inventario')
+
+  union all
+  -- 15. Il cruscotto risponde
+  select 15, 'cruscotto',
+    coalesce(sum(documenti_aperti + righe_da_abbinare + esauriti + critici)::text, '0')
+      || ' voci in sospeso',
+    case when count(*) >= 1 then 'OK' else 'ERRORE: nessuna organizzazione' end
+  from magazzino.cruscotto
 
 )
 select n as "#", controllo, valore, esito

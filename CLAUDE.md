@@ -66,11 +66,19 @@ prima o poi divergono.
 
 | Schermata | File |
 |---|---|
+| Cruscotto (radice) | `features/cruscotto/cruscotto_screen.dart` |
 | Accesso | `features/auth/accesso_screen.dart` |
 | Elenco documenti | `features/documenti/documenti_screen.dart` |
 | Revisione di un documento | `features/documenti/documento_screen.dart` |
 | Pannello di abbinamento | `features/documenti/abbina_sheet.dart` |
 | Foto di un nuovo documento | `features/documenti/nuovo_documento_screen.dart` |
+| Scorte, scadenze, abbattimento | `features/scorte/scorte_screen.dart` |
+| Lavorazioni | `features/lavorazioni/` |
+| Food cost | `features/food_cost/food_cost_screen.dart` |
+
+Nel cruscotto le tessere che valgono zero **spariscono** invece di mostrare
+uno zero: una schermata piena di zeri verdi insegna a non leggerla. E l'ordine
+è allarmi → lavoro arretrato → numeri, non il contrario.
 
 L'elenco legge dalla vista `documento_riepilogo`, non dalla tabella: porta già
 fornitore, conteggi e anteprima del contenuto.
@@ -100,6 +108,27 @@ misura in quante righe non devi guardare.
   ci arrivano solo codice, EAN, descrizione identica e alias.
 - Aggiungere un metodo di riconoscimento richiede di aggiornare **anche** il
   CHECK su `documento_carico_riga.metodo_match`.
+
+### Sezione 2
+
+- **Un semilavorato è un ingrediente**, con `prodotto_internamente = true`.
+  Non esiste una tabella separata per i semilavorati.
+- **L'esplosione delle distinte si ferma sui semilavorati.** Una ricetta
+  scarica il riso condito, non il riso crudo: quello è già uscito quando il
+  riso è stato preparato. Esplodere fino alle materie prime scaricherebbe due
+  volte.
+- **Lo scarto di un disassemblaggio non è una riga di output.** È la
+  differenza fra entrato e uscito, e il suo costo si spalma sui tagli buoni:
+  è quello che fa la ripartizione. Registrarlo come output vorrebbe dire
+  farlo entrare in magazzino.
+- **La ripartizione di default è a valore, non a peso.** A peso lo scarto
+  costerebbe quanto il filetto. Il `valore_relativo` non è un prezzo: contano
+  solo le proporzioni fra i tagli della stessa lavorazione.
+- Nella produzione **il peso può aumentare** (il riso assorbe acqua); nel
+  disassemblaggio no, e `chiudi_lavorazione` lo rifiuta.
+- `aggiorna_costo_medio()` e `conferma_carico()` contengono **la stessa
+  formula** della media ponderata: se cambia, va cambiata in entrambi. Debito
+  noto, da unificare.
 
 ## Migrazioni
 

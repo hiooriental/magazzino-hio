@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/db.dart';
 import '../../core/sessione.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/app_drawer.dart';
 import '../../shared/widgets/contenuto_centrato.dart';
 
 /// I documenti di carico, dal piu' recente.
@@ -35,6 +36,7 @@ class DocumentiScreen extends ConsumerWidget {
     final documenti = ref.watch(documentiProvider);
 
     return Scaffold(
+      drawer: const AppDrawer(attiva: '/documenti'),
       appBar: AppBar(
         title: const Text('Documenti'),
         actions: [
@@ -42,11 +44,6 @@ class DocumentiScreen extends ConsumerWidget {
             tooltip: 'Aggiorna',
             icon: const Icon(Icons.refresh),
             onPressed: () => ref.invalidate(documentiProvider),
-          ),
-          IconButton(
-            tooltip: 'Esci',
-            icon: const Icon(Icons.logout),
-            onPressed: () => Db.client.auth.signOut(),
           ),
         ],
         bottom: sessione.hasValue
