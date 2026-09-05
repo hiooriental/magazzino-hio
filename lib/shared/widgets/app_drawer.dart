@@ -55,6 +55,12 @@ class AppDrawer extends StatelessWidget {
                     attiva: attiva,
                   ),
                   _Voce(
+                    icona: Icons.menu_book_outlined,
+                    testo: 'Ricette',
+                    rotta: '/ricette',
+                    attiva: attiva,
+                  ),
+                  _Voce(
                     icona: Icons.euro_outlined,
                     testo: 'Food cost',
                     rotta: '/food-cost',

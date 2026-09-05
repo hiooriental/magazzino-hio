@@ -138,6 +138,154 @@ class MagazzinoRepository {
             .order('incidenza_percentuale', ascending: false),
       );
 
+  // ── Ricette ─────────────────────────────────────────────────────────────
+
+  /// I prodotti a menù, con l'indicazione se hanno già una ricetta attiva.
+  Future<List<Map<String, dynamic>>> prodottiVenduti() async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('prodotto_venduto')
+            .select('id, nome, categoria_menu, prezzo_vendita, '
+                'senza_distinta, codice_esterno, distinta(id, stato)')
+            .eq('attivo', true)
+            .order('nome'),
+      );
+
+  /// I semilavorati: ingredienti che si producono invece di comprarli.
+  Future<List<Map<String, dynamic>>> semilavorati() async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('ingrediente')
+            .select('id, nome, um_base, costo_medio, distinta(id, stato)')
+            .eq('prodotto_internamente', true)
+            .eq('attivo', true)
+            .order('nome'),
+      );
+
+  Future<String> creaProdottoVenduto({
+    required String organizzazioneId,
+    required String nome,
+    String? codiceEsterno,
+    String? categoria,
+    num? prezzo,
+  }) async {
+    final r = await Db.mag
+        .from('prodotto_venduto')
+        .insert({
+          'organizzazione_id': organizzazioneId,
+          'nome': nome,
+          if (codiceEsterno != null && codiceEsterno.isNotEmpty)
+            'codice_esterno': codiceEsterno,
+          if (categoria != null && categoria.isNotEmpty)
+            'categoria_menu': categoria,
+          if (prezzo != null) 'prezzo_vendita': prezzo,
+        })
+        .select('id')
+        .single();
+    return r['id'] as String;
+  }
+
+  /// Crea la ricetta se non c'è, e restituisce quella attiva.
+  ///
+  /// Nasce già attiva: una ricetta in bozza che nessuno attiva è una ricetta
+  /// che non scarica niente, e il difetto si scoprirebbe solo a inventario.
+  Future<String> distintaAttiva({
+    required String organizzazioneId,
+    String? prodottoVendutoId,
+    String? ingredienteId,
+    num? quantitaProdotta,
+  }) async {
+    final q = Db.mag.from('distinta').select('id').eq('stato', 'attiva');
+    final esistente = await (prodottoVendutoId != null
+            ? q.eq('prodotto_venduto_id', prodottoVendutoId)
+            : q.eq('ingrediente_id', ingredienteId!))
+        .maybeSingle();
+
+    if (esistente != null) return esistente['id'] as String;
+
+    final r = await Db.mag
+        .from('distinta')
+        .insert({
+          'organizzazione_id': organizzazioneId,
+          if (prodottoVendutoId != null)
+            'prodotto_venduto_id': prodottoVendutoId,
+          if (ingredienteId != null) 'ingrediente_id': ingredienteId,
+          if (quantitaProdotta != null) 'quantita_prodotta': quantitaProdotta,
+          'stato': 'attiva',
+        })
+        .select('id')
+        .single();
+    return r['id'] as String;
+  }
+
+  Future<Map<String, dynamic>> distinta(String id) async =>
+      await Db.mag.from('distinta').select('''
+            id, stato, versione, valida_da, quantita_prodotta, variabile, note,
+            prodotto_venduto_id, ingrediente_id,
+            prodotto_venduto(nome, prezzo_vendita),
+            ingrediente(nome, um_base)
+          ''').eq('id', id).single();
+
+  Future<List<Map<String, dynamic>>> componenti(String distintaId) async =>
+      List<Map<String, dynamic>>.from(
+        await Db.mag
+            .from('distinta_componente')
+            .select('id, quantita, scarto_percentuale, ordinamento, '
+                'ingrediente_id, ingrediente(nome, um_base, costo_medio)')
+            .eq('distinta_id', distintaId)
+            .order('ordinamento')
+            .order('id'),
+      );
+
+  Future<void> aggiungiComponente({
+    required String distintaId,
+    required String ingredienteId,
+    required num quantita,
+    num scarto = 0,
+  }) async {
+    await Db.mag.from('distinta_componente').insert({
+      'distinta_id': distintaId,
+      'ingrediente_id': ingredienteId,
+      'quantita': quantita,
+      'scarto_percentuale': scarto,
+    });
+  }
+
+  Future<void> aggiornaComponente(String id,
+      {num? quantita, num? scarto}) async {
+    await Db.mag.from('distinta_componente').update({
+      if (quantita != null) 'quantita': quantita,
+      if (scarto != null) 'scarto_percentuale': scarto,
+    }).eq('id', id);
+  }
+
+  Future<void> impostaResa(String distintaId, num quantitaProdotta) async {
+    await Db.mag
+        .from('distinta')
+        .update({'quantita_prodotta': quantitaProdotta}).eq('id', distintaId);
+  }
+
+  Future<num?> costoDistinta(String distintaId) async =>
+      await Db.mag.rpc('costo_distinta', params: {'p_distinta_id': distintaId})
+          as num?;
+
+  // ── Abbattimento ────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> registraAbbattimento({
+    required String lottoId,
+    required DateTime inizio,
+    required DateTime fine,
+    required num temperatura,
+  }) async =>
+      Map<String, dynamic>.from(
+        await Db.mag.rpc('registra_abbattimento', params: {
+          'p_lotto_id': lottoId,
+          'p_inizio': inizio.toUtc().toIso8601String(),
+          'p_fine': fine.toUtc().toIso8601String(),
+          'p_temperatura': temperatura,
+        }),
+      );
+
   // ── Lavorazioni ─────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> lavorazioni({int limite = 40}) async =>

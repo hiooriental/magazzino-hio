@@ -13,6 +13,8 @@ import '../features/documenti/nuovo_documento_screen.dart';
 import '../features/food_cost/food_cost_screen.dart';
 import '../features/lavorazioni/lavorazione_screen.dart';
 import '../features/lavorazioni/lavorazioni_screen.dart';
+import '../features/ricette/distinta_screen.dart';
+import '../features/ricette/ricette_screen.dart';
 import '../features/scorte/scorte_screen.dart';
 
 /// Sveglia GoRouter quando l'utente entra o esce.
@@ -76,6 +78,17 @@ final router = GoRouter(
         GoRoute(
           path: ':id',
           builder: (_, s) => LavorazioneScreen(id: s.pathParameters['id']!),
+        ),
+      ],
+    ),
+
+    GoRoute(
+      path: '/ricette',
+      builder: (_, __) => const RicetteScreen(),
+      routes: [
+        GoRoute(
+          path: ':id',
+          builder: (_, s) => DistintaScreen(id: s.pathParameters['id']!),
         ),
       ],
     ),

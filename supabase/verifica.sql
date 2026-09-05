@@ -23,9 +23,9 @@ with controlli as (
   from pg_tables where schemaname = 'magazzino'
 
   union all
-  -- 3. Viste: 4 della sezione 1, 10 della sezione 2
+  -- 3. Viste: 4 della sezione 1, 10 della sezione 2, 1 registro abbattimenti
   select 3, 'viste', count(*)::text,
-    case when count(*) = 14 then 'OK' else 'ERRORE: attese 14' end
+    case when count(*) = 15 then 'OK' else 'ERRORE: attese 15' end
   from pg_views where schemaname = 'magazzino'
 
   union all
@@ -118,14 +118,14 @@ with controlli as (
   -- 14. Le funzioni della sezione 2
   select 14, 'funzioni sezione 2',
     coalesce(string_agg(p.proname, ', ' order by p.proname), 'nessuna'),
-    case when count(*) = 8 then 'OK'
-         else 'ERRORE: attese 8, ne risultano ' || count(*) end
+    case when count(*) = 9 then 'OK'
+         else 'ERRORE: attese 9, ne risultano ' || count(*) end
   from pg_proc p
   join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'magazzino'
     and p.proname in ('costo_distinta','costo_ingrediente','chiudi_lavorazione',
                       'storna_lavorazione','scarica_vendita','scarica_giornata',
-                      'apri_inventario','chiudi_inventario')
+                      'apri_inventario','chiudi_inventario','registra_abbattimento')
 
   union all
   -- 15. Il cruscotto risponde

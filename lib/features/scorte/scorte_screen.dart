@@ -287,12 +287,12 @@ class _RigaScadenza extends StatelessWidget {
   }
 }
 
-class _RigaAbbattimento extends StatelessWidget {
+class _RigaAbbattimento extends ConsumerWidget {
   final Map<String, dynamic> r;
   const _RigaAbbattimento(this.r);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final giorni = (r['giorni_in_casa'] as num?)?.toInt() ?? 0;
     return Card(
       child: ListTile(
@@ -304,14 +304,77 @@ class _RigaAbbattimento extends StatelessWidget {
           'in casa da $giorni ${giorni == 1 ? 'giorno' : 'giorni'}',
           style: const TextStyle(fontSize: 12.5),
         ),
-        // Non è un promemoria di comodo: è l'obbligo dell'articolo 853/2004
+        // Non è un promemoria di comodo: è l'obbligo del Reg. CE 853/2004
         // sul pesce destinato al consumo crudo.
-        trailing: const Text('da abbattere',
-            style: TextStyle(
-                color: AppColors.accent,
-                fontSize: 12,
-                fontWeight: FontWeight.w600)),
+        trailing: TextButton(
+          onPressed: () => _registra(context, ref),
+          child: const Text('Registra'),
+        ),
       ),
     );
+  }
+
+  Future<void> _registra(BuildContext context, WidgetRef ref) async {
+    // I due soli trattamenti ammessi dalla norma. Offrirli come pulsanti
+    // invece che come campi liberi evita di registrare come conforme un
+    // trattamento che non lo è.
+    final scelta = await showDialog<(num, int)>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: Text('Abbattimento di ${r['ingrediente']}'),
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Text(
+              'Reg. CE 853/2004: sono ammessi solo questi due trattamenti.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(c, (-20, 24)),
+            child: const ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('−20 °C per 24 ore'),
+              subtitle: Text('Abbattitore o congelatore domestico adeguato'),
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(c, (-35, 15)),
+            child: const ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('−35 °C per 15 ore'),
+              subtitle: Text('Abbattitore rapido'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (scelta == null) return;
+
+    final (temperatura, ore) = scelta;
+    final fine = DateTime.now();
+    final inizio = fine.subtract(Duration(hours: ore));
+
+    try {
+      await repo.registraAbbattimento(
+        lottoId: r['lotto_id'] as String,
+        inizio: inizio,
+        fine: fine,
+        temperatura: temperatura,
+      );
+      ref.invalidate(abbattimentoProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: AppColors.accentGreen,
+          content: Text('Abbattimento registrato: '
+              '${numeroIt(temperatura)} °C per $ore ore.'),
+        ));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$e'), backgroundColor: AppColors.accent));
+      }
+    }
   }
 }
