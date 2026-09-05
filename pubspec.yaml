@@ -1,0 +1,49 @@
+name: magazzino_hio
+description: Magazzino, acquisti e food cost per HIO Oriental
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Stesse versioni di restaurant-booking: i due progetti condividono il
+  # database e conviene che condividano anche il client, cosi' un problema
+  # visto di la' vale anche di qua.
+  supabase_flutter: ^2.8.0
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+  go_router: ^14.6.2
+  google_fonts: ^6.2.1
+  flutter_dotenv: ^5.2.1
+  intl: ^0.19.0
+
+  # Foto dei documenti: scatto o scelta dalla galleria.
+  image_picker: ^1.2.0
+  # SHA-256 degli allegati, per non caricare due volte la stessa foto.
+  crypto: ^3.0.6
+
+  # Non lo usiamo direttamente, ma senza il pacchetto la build web avvisa che
+  # mancano i font di CupertinoIcons, richiesti da GlobalCupertinoLocalizations.
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.6.3
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+    - assets/images/HIO-ORIENTAL-BAR.png
+    - assets/images/logo_appbar.png
+    - assets/images/logo_drawer.png
+    - assets/images/logo_splash.png

@@ -1,0 +1,62 @@
+name: Deploy Flutter Web
+
+on:
+  push:
+    branches: [main]
+  # Utile per ripubblicare senza dover fare un commit finto.
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # L'organizzazione hiooriental concede ai workflow la sola lettura, quindi
+    # il permesso di scrivere il ramo gh-pages va chiesto qui.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          # Stessa versione dell'ambiente locale e di restaurant-booking.
+          # Il codice usa Color.withValues(), che esiste solo da 3.27.
+          flutter-version: '3.27.4'
+          channel: 'stable'
+          cache: true
+
+      # Il .env non sta in git. Le stesse chiavi del gestionale prenotazioni:
+      # e' lo stesso progetto Supabase, il magazzino vive in un altro schema.
+      - name: Crea file .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
+
+      - name: Installa dipendenze
+        run: flutter pub get
+
+      # Un errore vero ferma la pubblicazione; gli avvisi no, altrimenti una
+      # deprecazione del client Supabase bloccherebbe il deploy per niente.
+      - name: Controlla il codice
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test
+        run: flutter test
+
+      # base-href "/" perche' l'app sta alla radice del suo dominio.
+      # Se un giorno finisse sotto un sottopercorso, va cambiato qui.
+      - name: Build Web
+        run: flutter build web --release --base-href "/"
+
+      - name: Deploy su GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          # Scritto qui e non solo nelle impostazioni di Pages: ogni
+          # pubblicazione riscrive il ramo gh-pages e cancellerebbe il dominio
+          # impostato a mano, lasciando il sito irraggiungibile senza motivo
+          # apparente. E' successo su restaurant-booking.
+          cname: magazzino.hiooriental.com
