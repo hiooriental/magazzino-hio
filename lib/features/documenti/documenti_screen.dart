@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/db.dart';
 import '../../core/sessione.dart';
+import '../../data/magazzino_repository.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/app_drawer.dart';
 import '../../shared/widgets/contenuto_centrato.dart';
@@ -98,7 +99,7 @@ class DocumentiScreen extends ConsumerWidget {
   }
 }
 
-class _RigaDocumento extends StatelessWidget {
+class _RigaDocumento extends ConsumerWidget {
   final Map<String, dynamic> d;
   const _RigaDocumento(this.d);
 
@@ -122,10 +123,15 @@ class _RigaDocumento extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final stato = d['stato'] as String? ?? 'bozza';
     final (colore, sfondo, etichetta) =
         _stati[stato] ?? (AppColors.badgeGrey, AppColors.cardLight, stato);
+
+    // Si cancella solo ciò che non ha ancora mosso il magazzino. Un carico
+    // confermato si storna dal suo dettaglio, e la storia resta.
+    final eliminabile = (stato == 'bozza' || stato == 'in_revisione') &&
+        (ref.watch(sessioneProvider).valueOrNull?.puoConfermare ?? false);
 
     final fornitore = d['fornitore'] as String?;
     final daAgganciare = d['fornitore_da_agganciare'] == true;
@@ -137,6 +143,10 @@ class _RigaDocumento extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: () => context.go('/documenti/${d['id']}'),
+      // Tenere premuto per eliminare: la scorciatoia serve a ripulire in
+      // fretta le bozze venute male, senza aprirle una per una. Chiede
+      // comunque conferma, perché è un gesto che non si annulla.
+      onLongPress: eliminabile ? () => _elimina(context, ref, d) : null,
       child: Card(
         child: Padding(
           padding: const EdgeInsets.all(14),
@@ -271,6 +281,18 @@ class _RigaDocumento extends StatelessWidget {
                       evidenzia: true,
                     ),
                   ],
+                  if (eliminabile) ...[
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Elimina',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      color: AppColors.textMuted,
+                      onPressed: () => _elimina(context, ref, d),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -278,6 +300,44 @@ class _RigaDocumento extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+Future<void> _elimina(
+    BuildContext context, WidgetRef ref, Map<String, dynamic> d) async {
+  final nome = (d['fornitore'] as String?) ?? 'questo documento';
+  final ok = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Eliminare il documento?'),
+          content: Text(
+            '$nome, ${d['numero_documento'] ?? 'senza numero'}.\n\n'
+            'Spariscono le righe e le foto. Il magazzino non è stato toccato, '
+            'quindi non resta traccia di niente.',
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Annulla')),
+            TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+              child: const Text('Elimina'),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+  if (!ok) return;
+
+  try {
+    await repo.elimina(d['id'] as String);
+    ref.invalidate(documentiProvider);
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: AppColors.accent));
+    }
   }
 }
 
