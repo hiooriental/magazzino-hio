@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/magazzino_repository.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/scegli_ingrediente.dart';
 
 /// La scheda di un ingrediente: si apre per crearlo o per modificarlo.
 ///
@@ -132,14 +133,40 @@ class _SchedaState extends State<_Scheda> {
     };
 
     try {
+      String id;
       if (_nuovo) {
         dati['organizzazione_id'] = widget.organizzazioneId;
         dati['um_base'] = _um;
-        await repo.creaIngrediente(dati);
+        id = await repo.creaIngrediente(dati);
       } else {
-        await repo.aggiornaIngrediente(
-            widget.ingrediente!['id'] as String, dati);
+        id = widget.ingrediente!['id'] as String;
+        await repo.aggiornaIngrediente(id, dati);
       }
+
+      // Diventare un semilavorato non è mettere una spunta: è dire che quella
+      // cosa la prepari tu. La resa serve subito, altrimenti resta un
+      // semilavorato senza ricetta — visibile nell'elenco e inutile, perché
+      // il suo costo non si può calcolare.
+      if (_interno && mounted) {
+        final gia = await repo.distintaDiIngrediente(id);
+        if (gia == null && mounted) {
+          final resa = await chiediNumero(
+            context,
+            titolo: 'Quanto ${_nome.text.trim()} esce da una preparazione?',
+            etichetta: 'Resa in $_um',
+            aiuto: 'Il peso finito, non la somma degli ingredienti. Serve a '
+                'dividere il costo sulla quantità prodotta.',
+          );
+          if (resa != null && resa > 0) {
+            await repo.distintaAttiva(
+              organizzazioneId: widget.organizzazioneId,
+              ingredienteId: id,
+              quantitaProdotta: resa,
+            );
+          }
+        }
+      }
+
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
@@ -151,6 +178,56 @@ class _SchedaState extends State<_Scheda> {
         });
       }
     }
+  }
+
+  /// Da comprato a preparato in casa.
+  ///
+  /// Non c'è niente da migrare: la storia dei carichi resta, il costo medio
+  /// resta. Cambia solo da dove verrà il costo delle prossime entrate —
+  /// dalle lavorazioni invece che dalle fatture.
+  void _diventaSemilavorato() {
+    setState(() => _interno = true);
+    if (_nuovo) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      duration: Duration(seconds: 3),
+      content: Text('I carichi già registrati restano. Salvando, ti chiedo la '
+          'resa e gli creo la ricetta.'),
+    ));
+  }
+
+  /// E il ritorno indietro.
+  ///
+  /// Se ha già una ricetta va detto: resta lì, ma smette di servire a
+  /// qualcosa, perché un ingrediente comprato prende il costo dalle fatture.
+  Future<void> _tornaAcquistato() async {
+    if (!_nuovo) {
+      final ricetta =
+          await repo.distintaDiIngrediente(widget.ingrediente!['id'] as String);
+      if (ricetta != null && mounted) {
+        final ok = await showDialog<bool>(
+              context: context,
+              builder: (c) => AlertDialog(
+                title: const Text('Ha già una ricetta'),
+                content: const Text(
+                  'Se torna a essere un ingrediente comprato, la ricetta resta '
+                  'ma non serve più a niente: il costo tornerà a venire dalle '
+                  'fatture.\n\nLe lavorazioni già registrate non si toccano.',
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(c, false),
+                      child: const Text('Lascia com\'è')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(c, true),
+                      child: const Text('Torna a comprato')),
+                ],
+              ),
+            ) ??
+            false;
+        if (!ok) return;
+      }
+    }
+    if (mounted) setState(() => _interno = false);
   }
 
   /// Eliminare non è disattivare, e la differenza conta.
@@ -317,13 +394,19 @@ class _SchedaState extends State<_Scheda> {
                         value: _interno,
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Si produce in casa'),
-                        subtitle: const Text(
-                          'Salse, brodi, riso condito, tagli ricavati da un '
-                          'pezzo intero. Ha una ricetta e un costo che nasce '
-                          'dalle lavorazioni invece che dagli acquisti.',
-                          style: TextStyle(fontSize: 12),
+                        subtitle: Text(
+                          _interno
+                              ? 'Salvando, se non ce l\'ha ancora, ti chiedo '
+                                  'quanto ne esce da una preparazione e gli '
+                                  'creo la ricetta.'
+                              : 'Salse, brodi, riso condito, tagli ricavati da '
+                                  'un pezzo intero. Ha una ricetta e un costo '
+                                  'che nasce dalle lavorazioni invece che '
+                                  'dagli acquisti.',
+                          style: const TextStyle(fontSize: 12),
                         ),
-                        onChanged: (v) => setState(() => _interno = v),
+                        onChanged: (v) =>
+                            v ? _diventaSemilavorato() : _tornaAcquistato(),
                       ),
                       SwitchListTile(
                         value: _vendibile,

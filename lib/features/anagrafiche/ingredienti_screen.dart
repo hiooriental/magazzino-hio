@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/sessione.dart';
 import '../../data/magazzino_repository.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/app_drawer.dart';
 import '../../shared/widgets/contenuto_centrato.dart';
+import '../../shared/widgets/scegli_ingrediente.dart';
 import 'ingrediente_sheet.dart';
 
 final ingredientiProvider = FutureProvider.autoDispose
@@ -41,6 +43,28 @@ class _IngredientiScreenState extends ConsumerState<IngredientiScreen> {
   Widget build(BuildContext context) {
     final sessione = ref.watch(sessioneProvider).valueOrNull;
     final elenco = ref.watch(ingredientiProvider(!_ancheSpenti));
+
+    /// Apre la ricetta del semilavorato, creandola se non c'è ancora.
+    Future<void> apriRicetta(Map<String, dynamic> i) async {
+      if (sessione == null) return;
+      var id = await repo.distintaDiIngrediente(i['id'] as String);
+      if (id == null) {
+        if (!context.mounted) return;
+        final resa = await chiediNumero(
+          context,
+          titolo: 'Quanto ${i['nome']} esce da una preparazione?',
+          etichetta: 'Resa in ${i['um_base']}',
+          aiuto: 'Il peso finito, non la somma degli ingredienti.',
+        );
+        if (resa == null || resa <= 0) return;
+        id = await repo.distintaAttiva(
+          organizzazioneId: sessione.organizzazioneId,
+          ingredienteId: i['id'] as String,
+          quantitaProdotta: resa,
+        );
+      }
+      if (context.mounted) context.go('/ricette/$id');
+    }
 
     Future<void> apri([Map<String, dynamic>? i]) async {
       if (sessione == null) return;
@@ -189,8 +213,13 @@ class _IngredientiScreenState extends ConsumerState<IngredientiScreen> {
                             ],
                           ),
                         ),
-                        ...gruppi[c]!
-                            .map((i) => _Riga(i: i, onTap: () => apri(i))),
+                        ...gruppi[c]!.map((i) => _Riga(
+                              i: i,
+                              onTap: () => apri(i),
+                              onRicetta: i['prodotto_internamente'] == true
+                                  ? () => apriRicetta(i)
+                                  : null,
+                            )),
                       ],
                     ],
                   );
@@ -207,7 +236,8 @@ class _IngredientiScreenState extends ConsumerState<IngredientiScreen> {
 class _Riga extends StatelessWidget {
   final Map<String, dynamic> i;
   final VoidCallback onTap;
-  const _Riga({required this.i, required this.onTap});
+  final VoidCallback? onRicetta;
+  const _Riga({required this.i, required this.onTap, this.onRicetta});
 
   @override
   Widget build(BuildContext context) {
@@ -253,8 +283,24 @@ class _Riga extends StatelessWidget {
               ].join(' · '),
               style: const TextStyle(fontSize: 12),
             ),
-            trailing: const Icon(Icons.chevron_right,
-                size: 20, color: AppColors.textMuted),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Per un semilavorato la ricetta è la cosa che serve più
+                // spesso: senza questa scorciatoia bisognerebbe uscire,
+                // andare in Ricette e ritrovarlo lì.
+                if (onRicetta != null)
+                  IconButton(
+                    tooltip: 'Ricetta',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.menu_book_outlined, size: 19),
+                    color: AppColors.goldDark,
+                    onPressed: onRicetta,
+                  ),
+                const Icon(Icons.chevron_right,
+                    size: 20, color: AppColors.textMuted),
+              ],
+            ),
             onTap: onTap,
           ),
         ),

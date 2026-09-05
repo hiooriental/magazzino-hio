@@ -318,6 +318,21 @@ class MagazzinoRepository {
     return r['id'] as String;
   }
 
+  /// L'id della ricetta attiva di un semilavorato, se ce l'ha.
+  ///
+  /// Diversa da `distintaAttiva`, che se non c'è la crea: qui serve solo
+  /// sapere se esiste, senza fabbricarne una per il solo fatto di aver
+  /// guardato.
+  Future<String?> distintaDiIngrediente(String ingredienteId) async {
+    final r = await Db.mag
+        .from('distinta')
+        .select('id')
+        .eq('ingrediente_id', ingredienteId)
+        .eq('stato', 'attiva')
+        .maybeSingle();
+    return r?['id'] as String?;
+  }
+
   Future<Map<String, dynamic>> distinta(String id) async =>
       await Db.mag.from('distinta').select('''
             id, stato, versione, valida_da, quantita_prodotta, variabile, note,
